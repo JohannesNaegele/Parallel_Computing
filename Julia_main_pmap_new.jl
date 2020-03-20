@@ -5,6 +5,7 @@
 using Distributed
 using Distributions
 using Compat.Dates
+using Profile
 
 #--------------------------------#
 #         Initialization         #
@@ -99,7 +100,7 @@ function faster()
   # Utility function
   ssigma        = 2;
   bbeta         = 0.97;
-  T             = 10;
+  T             = 2;
 
   # Prices
   r             = 0.07;
@@ -210,4 +211,4 @@ function faster()
   end
 end
 
-faster()
+@profile faster()
