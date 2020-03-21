@@ -7,7 +7,7 @@
 
 library("Rcpp")
 
-setwd("/home/david/Dropbox/Documents/Doctorado/Computation course/Codigos/Github Repository/Parallel_Computing_2/")
+setwd("/home/johannes/Documents/GitHub/Parallel_Computing/")
 
 Sys.setenv("PKG_CXXFLAGS"=" -fopenmp")
 
