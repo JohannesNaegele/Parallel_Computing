@@ -46,6 +46,11 @@ acc:
 	./Cpp_main_acc.exe;
 	rm Cpp_main_acc.exe
 
+acc_gcc:
+	g++ Cpp_main_OpenACC.cpp -o Cpp_main_acc.exe -fopenacc -Ofast
+	./Cpp_main_acc.exe;
+	rm Cpp_main_acc.exe
+
 acc_profile:
 	pgc++ Cpp_main_OpenACC.cpp -o Cpp_main_acc.exe -fast -acc -ta=nvidia -Minfo=accel,ccff
 	./Cpp_main_acc.exe;
@@ -71,14 +76,8 @@ julia_pmap:
 Rcpp:
 	export OMP_NUM_THREADS=$(CORES); Rscript Rcpp_main.R;
 
-R:
-	Rscript R_main.R $(CORES)
-
 python:
 	python Python_main.py $(CORES)
-
-matlab:
-	matlab -nodesktop -nodisplay -r "Matlab_main $(CORES)"
 
 MPI:
 	mpic++ -g MPI_main.cpp -o main
@@ -86,8 +85,6 @@ MPI:
 	rm main
 
 CUDA:
-	export PATH=/usr/local/cuda/bin/:$PATH
-	export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 	nvcc CUDA_main.cu -o main
 	./main
 	rm main
