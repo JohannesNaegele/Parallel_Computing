@@ -4,7 +4,7 @@
 
 using Distributed
 using Distributions
-using Compat.Dates
+using Dates
 using Profile
 
 #--------------------------------#
@@ -12,7 +12,7 @@ using Profile
 #--------------------------------#
 
 # Number of cores/workers
-addprocs(5)
+addprocs(6)
 
 
   # Data structure of state and exogenous variables

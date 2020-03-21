@@ -47,6 +47,7 @@ acc:
 	rm Cpp_main_acc.exe
 
 acc_gcc:
+	ACC_DEVICE_TYPE=nvidia
 	g++ Cpp_main_OpenACC.cpp -o Cpp_main_acc.exe -fopenacc -Ofast
 	./Cpp_main_acc.exe;
 	rm Cpp_main_acc.exe
@@ -58,7 +59,7 @@ acc_profile:
 	rm Cpp_main_acc.exe
 
 omp:
-	g++ Cpp_main_OpenACC.cpp -o Cpp_main_omp.exe -fopenmp 
+	g++ Cpp_main_OpenACC.cpp -o Cpp_main_omp.exe -fopenmp -Ofast
 	./Cpp_main_omp.exe;
 	rm Cpp_main_omp.exe
 	
@@ -68,10 +69,10 @@ omp_pgi:
 	rm Cpp_main_omp_pgi.exe
 
 julia_parallel:
-	julia -p$(CORES) Julia_main_parallel.jl
+	julia -p6 Julia_main_parallel_new.jl
 
 julia_pmap:
-	julia -p$(CORES) Julia_main_pmap.jl
+	julia -p6 Julia_main_pmap_new.jl
 
 Rcpp:
 	export OMP_NUM_THREADS=$(CORES); Rscript Rcpp_main.R;
