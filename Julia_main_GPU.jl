@@ -1,62 +1,240 @@
-using CuArrays, FileIO, Colors, GPUArrays, BenchmarkTools, ImageShow, ImageMagick, ImageIO
-using CuArrays: CuArray
-"""
-The function calculating the Julia set
-"""
-function juliaset(z0, maxiter)
-    c = ComplexF32(-0.5, 0.75)
-    z = z0
-    for i in 1:maxiter
-        abs2(z) > 4f0 && return (i - 1) % UInt8
-        z = z * z + c
+#--------------------------------#
+#         House-keeping          #
+#--------------------------------#
+
+using Distributed
+using Distributions
+using Dates
+using SharedArrays
+using CUDAnative, CuArrays, BenchmarkTools
+
+#--------------------------------#
+#         Initialization         #
+#--------------------------------#
+
+# Number of cores/workers
+addprocs(6)
+
+function faster()
+
+    # Grid for x
+    nx = 1500;
+    xmin = 0.1;
+    xmax = 4.0;
+
+    # Grid for e: parameters for Tauchen
+    ne = 15;
+    ssigma_eps = 0.02058;
+    llambda_eps = 0.99;
+    m = 1.5;
+
+    # Utility function
+    ssigma = 2;
+    bbeta = 0.97;
+    T = 10;
+
+    # Prices
+    r = 0.07;
+    w = 5;
+
+    # Initialize the grid for X
+    xgrid = CuArray{Float64,1}(zeros(nx))
+
+    # Initialize the grid for E and the transition probability matrix
+    egrid = CuArray{Float64,1}(zeros(ne))
+    P = CuArray{Float64,2}(zeros(ne, ne))
+
+    # Initialize value function V
+    V = CuArray{Float64,3}(zeros(T, nx, ne))
+    V_tomorrow = CuArray{Float64,2}(zeros(nx, ne))
+
+    # Initialize value function as a shared array
+    tempV = CuArray{Float64,1}(ne*nx)
+
+    #--------------------------------#
+    #         Grid creation          #
+    #--------------------------------#
+
+    # Grid for capital (x)
+    size = nx;
+    xstep = (xmax - xmin) /(size - 1);
+    for i = 1:nx
+    xgrid[i] = xmin + (i-1)*xstep;
     end
-    return maxiter % UInt8 # % is used to convert without overflow check
-end
-range = 100:50:2^12
-cutimes, jltimes = Float64[], Float64[]
-function run_bench(in, out)
-  # use dot syntax to apply `juliaset` to each elemt of q_converted 
-  # and write the output to result
-  out .= juliaset.(in, 16)
-  # all calls to the GPU are scheduled asynchronous, 
-  # so we need to synchronize
-  GPUArrays.synchronize(out)
-end
-# store a reference to the last results for plotting
-last_jl, last_cu = nothing, nothing
-for N in range
-  w, h = N, N
-  q = [ComplexF32(r, i) for i=1:-(2.0/w):-1, r=-1.5:(3.0/h):1.5]
-  for (times, Typ) in ((cutimes, CuArray), (jltimes, Array))
-    # convert to Array or CuArray - moving the calculation to CPU/GPU
-    q_converted = Typ(q)
-    result = Typ(zeros(UInt8, size(q)))
-    for i in 1:10 # 5 samples per size
-      # benchmarking macro, all variables need to be prefixed with $
-      t = Base.@elapsed begin
-				run_bench(q_converted, result)
-      end
-      global last_jl, last_cu # we're in local scope
-      if result isa CuArray
-        last_cu = result
-      else
-      	last_jl = result
-      end
-      push!(times, t)
+
+    # Grid for productivity (e) with Tauchen (1986)
+    size = ne;
+    ssigma_y = sqrt((ssigma_eps^2) / (1 - (llambda_eps^2)));
+    estep = 2*ssigma_y*m / (size-1);
+    for i = 1:ne
+    egrid[i] = (-m*sqrt((ssigma_eps^2) / (1 - (llambda_eps^2))) + (i-1)*estep);
     end
-  end
+
+    # Transition probability matrix (P) Tauchen (1986)
+    mm = egrid[2] - egrid[1];
+    for j = 1:ne
+    for k = 1:ne
+        if(k == 1)
+        P[j, k] = cdf(Normal(), (egrid[k] - llambda_eps*egrid[j] + (mm/2))/ssigma_eps);
+        elseif(k == ne)
+        P[j, k] = 1 - cdf(Normal(), (egrid[k] - llambda_eps*egrid[j] - (mm/2))/ssigma_eps);
+        else
+        P[j, k] = cdf(Normal(), (egrid[k] - llambda_eps*egrid[j] + (mm/2))/ssigma_eps) - cdf(Normal(), (egrid[k] - llambda_eps*egrid[j] - (mm/2))/ssigma_eps);
+        end
+    end
+    end
+
+    # Exponential of the grid e
+    for i = 1:ne
+    egrid[i] = exp(egrid[i]);
+    end
+
+
+
+    #--------------------------------#
+    #     Structure and function     #
+    #--------------------------------#
+
+    # Data structure of state and exogenous variables
+    # @everywhere struct modelState
+    # ind::Int64
+    # ne::Int64
+    # nx::Int64
+    # T::Int64
+    # age::Int64
+    # P::Array{Float64,2}
+    # xgrid::Vector{Float64}
+    # egrid::Vector{Float64}
+    # ssigma::Float64
+    # bbeta::Float64
+    # V::Array{Float64,2}
+    # w::Float64
+    # r::Float64
+    # end
+
+    struct modelState
+        ind::Int64
+        ne::Int64
+        nx::Int64
+        T::Int64
+        age::Int64
+        P::CuArray{Float64,2}
+        xgrid::CuVector{Float64}
+        egrid::CuVector{Float64}
+        ssigma::Float64
+        bbeta::Float64
+        V::CuArray{Float64,2}
+        w::Float64
+        r::Float64
+    end
+
+    # Function that computes value function, given vector of state variables
+    function value(currentState::modelState)
+
+    ind     = currentState.ind
+    age     = currentState.age
+    ne      = currentState.ne
+    nx      = currentState.nx
+    T       = currentState.T
+    P       = currentState.P
+    xgrid   = currentState.xgrid
+    egrid   = currentState.egrid
+    ssigma  = currentState.ssigma
+    bbeta   = currentState.bbeta
+    w       = currentState.w
+    r       = currentState.r
+    V       = currentState.V
+
+    ix      = convert(Int, floor((ind-0.05)/ne))+1;
+    ie      = convert(Int, floor(mod(ind-0.05, ne))+1);
+
+    VV      = -10.0^3;
+    ixpopt  = 0;
+
+
+        for ixp = 1:nx
+
+        expected = 0.0;
+        if(age < T)
+            for iep = 1:ne
+            expected = expected + P[ie, iep]*V[ixp, iep];
+            end
+        end
+
+        cons  = (1 + r)*xgrid[ix] + egrid[ie]*w - xgrid[ixp];
+
+        utility = (cons^(1-ssigma))/(1-ssigma) + bbeta*expected;
+
+        if(cons <= 0)
+            utility = -10.0^(5);
+        end
+
+        if(utility >= VV)
+            VV = utility;
+            ixpopt = ixp;
+        end
+
+        utility = 0.0;
+        end
+
+        return(VV);
+
+    end
+
+
+    #--------------------------------#
+    #     Life-cycle computation     #
+    #--------------------------------#
+
+    print(" \n")
+    print("Life cycle computation: \n")
+    print(" \n")
+
+    start = Dates.unix2datetime(time())
+
+    for age = T:-1:1
+
+    @sync @distributed for ind = 1:(ne*nx)
+
+        ix      = convert(Int, ceil(ind/ne));
+        ie      = convert(Int, floor(mod(ind-0.05, ne))+1);
+
+        currentState = modelState(ind,ne,nx,T,age,P,xgrid,egrid,ssigma,bbeta, V_tomorrow,w,r)
+        tempV[ind] = value(currentState);
+
+    end
+
+    for ind = 1:(ne*nx)
+
+        ix      = convert(Int, ceil(ind/ne));
+        ie      = convert(Int, floor(mod(ind-0.05, ne))+1);
+
+        V[age, ix, ie] = tempV[ind]
+        V_tomorrow[ix, ie] = tempV[ind]
+    end
+
+    finish = convert(Int, Dates.value(Dates.unix2datetime(time())- start))/1000;
+    print("Age: ", age, ". Time: ", finish, " seconds. \n")
+    end
+
+    print("\n")
+    finish = convert(Int, Dates.value(Dates.unix2datetime(time())- start))/1000;
+    print("TOTAL ELAPSED TIME: ", finish, " seconds. \n")
+
+    #---------------------#
+    #     Some checks     #
+    #---------------------#
+
+    print(" \n")
+    print(" - - - - - - - - - - - - - - - - - - - - - \n")
+    print(" \n")
+    print("The first entries of the value function: \n")
+    print(" \n")
+
+    # I print the first entries of the value function, to check
+    for i = 1:3
+        print(round(V[1, 1, i], digits=5), "\n")
+    end
 end
 
-cu_jl = hcat(Array(last_cu), last_jl)
-cmap = colormap("Blues", 16 + 1)
-color_lookup(val, cmap) = cmap[val + 1]
-color_lookup.(cu_jl, (cmap,))
-
-using Plots; gr()
-x = repeat(range, inner = 10)
-speedup = jltimes ./ cutimes
-Plots.scatter(
-  log2.(x), [speedup, fill(1.0, length(speedup))], 
-  label = ["cuda" "cpu"], markersize = 2, markerstrokewidth = 0,
-  legend = :right, xlabel = "2^N", ylabel = "speedup"
-)
+faster()
