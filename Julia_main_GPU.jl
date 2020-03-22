@@ -6,7 +6,7 @@ using Distributed
 using Distributions
 using Dates
 using SharedArrays
-using CUDAnative, CuArrays, BenchmarkTools
+using CUDAnative, CuArrays, CUDAdrv, BenchmarkTools
 
 #--------------------------------#
 #         Initialization         #
@@ -14,6 +14,75 @@ using CUDAnative, CuArrays, BenchmarkTools
 
 # Number of cores/workers
 addprocs(6)
+CuArrays.allowscalar(false)
+
+struct modelState
+    ind::Int64
+    ne::Int64
+    nx::Int64
+    T::Int64
+    age::Int64
+    P::CuArray{Float64,2}
+    xgrid::CuVector{Float64}
+    egrid::CuVector{Float64}
+    ssigma::Float64
+    bbeta::Float64
+    V::CuArray{Float64,2}
+    w::Float64
+    r::Float64
+end
+
+# Function that computes value function, given vector of state variables
+function value(currentState::modelState)
+
+    ind     = currentState.ind
+    age     = currentState.age
+    ne      = currentState.ne
+    nx      = currentState.nx
+    T       = currentState.T
+    P       = currentState.P
+    xgrid   = currentState.xgrid
+    egrid   = currentState.egrid
+    ssigma  = currentState.ssigma
+    bbeta   = currentState.bbeta
+    w       = currentState.w
+    r       = currentState.r
+    V       = currentState.V
+
+    ix      = convert(Int, floor((ind-0.05)/ne))+1;
+    ie      = convert(Int, floor(mod(ind-0.05, ne))+1);
+
+    VV      = -10.0^3;
+    ixpopt  = 0;
+
+
+    for ixp = 1:nx
+        expected = 0.0;
+        if(age < T)
+            for iep = 1:ne
+                expected = expected + P[ie, iep]*V[ixp, iep];
+            end
+        end
+
+        cons  = (1 + r)*xgrid[ix] + egrid[ie]*w - xgrid[ixp];
+
+        utility = (cons^(1-ssigma))/(1-ssigma) + bbeta*expected;
+
+        if(cons <= 0)
+            utility = -10.0^(5);
+        end
+
+        if(utility >= VV)
+            VV = utility;
+            ixpopt = ixp;
+        end
+
+        utility = 0.0;
+    end
+
+    return(VV);
+
+end
 
 function faster()
 
@@ -50,6 +119,8 @@ function faster()
 
     # Initialize value function as a shared array
     tempV = CuArray{Float64,1}(zeros(ne*nx))
+
+    println("vor grid")
 
     #--------------------------------#
     #         Grid creation          #
@@ -89,98 +160,7 @@ function faster()
     egrid[i] = exp(egrid[i]);
     end
 
-
-
-    #--------------------------------#
-    #     Structure and function     #
-    #--------------------------------#
-
-    # Data structure of state and exogenous variables
-    # @everywhere struct modelState
-    # ind::Int64
-    # ne::Int64
-    # nx::Int64
-    # T::Int64
-    # age::Int64
-    # P::Array{Float64,2}
-    # xgrid::Vector{Float64}
-    # egrid::Vector{Float64}
-    # ssigma::Float64
-    # bbeta::Float64
-    # V::Array{Float64,2}
-    # w::Float64
-    # r::Float64
-    # end
-
-    struct modelState
-        ind::Int64
-        ne::Int64
-        nx::Int64
-        T::Int64
-        age::Int64
-        P::CuArray{Float64,2}
-        xgrid::CuVector{Float64}
-        egrid::CuVector{Float64}
-        ssigma::Float64
-        bbeta::Float64
-        V::CuArray{Float64,2}
-        w::Float64
-        r::Float64
-    end
-
-    # Function that computes value function, given vector of state variables
-    function value(currentState::modelState)
-
-    ind     = currentState.ind
-    age     = currentState.age
-    ne      = currentState.ne
-    nx      = currentState.nx
-    T       = currentState.T
-    P       = currentState.P
-    xgrid   = currentState.xgrid
-    egrid   = currentState.egrid
-    ssigma  = currentState.ssigma
-    bbeta   = currentState.bbeta
-    w       = currentState.w
-    r       = currentState.r
-    V       = currentState.V
-
-    ix      = convert(Int, floor((ind-0.05)/ne))+1;
-    ie      = convert(Int, floor(mod(ind-0.05, ne))+1);
-
-    VV      = -10.0^3;
-    ixpopt  = 0;
-
-
-        for ixp = 1:nx
-
-        expected = 0.0;
-        if(age < T)
-            for iep = 1:ne
-            expected = expected + P[ie, iep]*V[ixp, iep];
-            end
-        end
-
-        cons  = (1 + r)*xgrid[ix] + egrid[ie]*w - xgrid[ixp];
-
-        utility = (cons^(1-ssigma))/(1-ssigma) + bbeta*expected;
-
-        if(cons <= 0)
-            utility = -10.0^(5);
-        end
-
-        if(utility >= VV)
-            VV = utility;
-            ixpopt = ixp;
-        end
-
-        utility = 0.0;
-        end
-
-        return(VV);
-
-    end
-
+    println("nach grid")
 
     #--------------------------------#
     #     Life-cycle computation     #
@@ -192,29 +172,27 @@ function faster()
 
     start = Dates.unix2datetime(time())
 
+    # hier beginnt der Spaß
     for age = T:-1:1
+        @sync for ind = 1:(ne*nx)
 
-    @sync @distributed for ind = 1:(ne*nx)
 
-        ix      = convert(Int, ceil(ind/ne));
-        ie      = convert(Int, floor(mod(ind-0.05, ne))+1);
+            currentState = modelState(ind,ne,nx,T,age,P,xgrid,egrid,ssigma,bbeta, V_tomorrow,w,r)
+            tempV[ind] = value(currentState);
 
-        currentState = modelState(ind,ne,nx,T,age,P,xgrid,egrid,ssigma,bbeta, V_tomorrow,w,r)
-        tempV[ind] = value(currentState);
+        end
 
-    end
+        for ind = 1:(ne*nx)
 
-    for ind = 1:(ne*nx)
+            ix      = convert(Int, ceil(ind/ne));
+            ie      = convert(Int, floor(mod(ind-0.05, ne))+1);
 
-        ix      = convert(Int, ceil(ind/ne));
-        ie      = convert(Int, floor(mod(ind-0.05, ne))+1);
+            V[age, ix, ie] = tempV[ind]
+            V_tomorrow[ix, ie] = tempV[ind]
+        end
 
-        V[age, ix, ie] = tempV[ind]
-        V_tomorrow[ix, ie] = tempV[ind]
-    end
-
-    finish = convert(Int, Dates.value(Dates.unix2datetime(time())- start))/1000;
-    print("Age: ", age, ". Time: ", finish, " seconds. \n")
+        finish = convert(Int, Dates.value(Dates.unix2datetime(time())- start))/1000;
+        print("Age: ", age, ". Time: ", finish, " seconds. \n")        
     end
 
     print("\n")
@@ -236,5 +214,7 @@ function faster()
         print(round(V[1, 1, i], digits=5), "\n")
     end
 end
+
+CUDAdrv.@profile faster()
 
 faster()
