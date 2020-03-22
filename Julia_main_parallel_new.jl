@@ -136,29 +136,29 @@ function faster()
     ixpopt  = 0;
 
 
-        for ixp = 1:nx
+        @inbounds for ixp = 1:nx
 
-        expected = 0.0;
-        if(age < T)
-            for iep = 1:ne
-            expected = expected + P[ie, iep]*V[ixp, iep];
+            expected = 0.0;
+            if(age < T)
+                for iep = 1:ne
+                expected = expected + P[ie, iep]*V[ixp, iep];
+                end
             end
-        end
 
-        cons  = (1 + r)*xgrid[ix] + egrid[ie]*w - xgrid[ixp];
+            cons  = (1 + r)*xgrid[ix] + egrid[ie]*w - xgrid[ixp];
 
-        utility = (cons^(1-ssigma))/(1-ssigma) + bbeta*expected;
+            utility = (cons^(1-ssigma))/(1-ssigma) + bbeta*expected;
 
-        if(cons <= 0)
-            utility = -10.0^(5);
-        end
+            if(cons <= 0)
+                utility = -10.0^(5);
+            end
 
-        if(utility >= VV)
-            VV = utility;
-            ixpopt = ixp;
-        end
+            if(utility >= VV)
+                VV = utility;
+                ixpopt = ixp;
+            end
 
-        utility = 0.0;
+            utility = 0.0;
         end
 
         return(VV);
@@ -175,6 +175,12 @@ function faster()
     print(" \n")
 
     start = Dates.unix2datetime(time())
+
+    function indizes(ind, ne)
+        ix = convert(Int, ceil(ind/ne));
+        ie = convert(Int, floor(mod(ind-0.05, ne))+1);
+        return (ix, ie)
+    end
     
     for age = T:-1:1        
         currentState = modelState(1,ne,nx,T,age,P,xgrid,egrid,ssigma,bbeta, V_tomorrow,w,r)
@@ -185,21 +191,23 @@ function faster()
             ie      = convert(Int, floor(mod(ind-0.05, ne))+1);
             # Bottleneck!!!
             # currentState = modelState(ind,ne,nx,T,age,P,xgrid,egrid,ssigma,bbeta, V_tomorrow,w,r)
-            tempV[ind] = value(currentState, ind);
+            # tempV[ind] = value(currentState, ind);
+            V[age, indizes(ind, ne)[1], indizes(ind, ne)[2]] = value(currentState, ind)
+            V_tomorrow[indizes(ind, ne)[1], indizes(ind, ne)[2]] = V[age, indizes(ind, ne)[1], indizes(ind, ne)[2]]
 
-    end
+        end        
 
-    for ind = 1:(ne*nx)
+        # for ind = 1:(ne*nx)        
 
-        ix      = convert(Int, ceil(ind/ne));
-        ie      = convert(Int, floor(mod(ind-0.05, ne))+1);
+        #     # ix      = convert(Int, ceil(ind/ne));
+        #     # ie      = convert(Int, floor(mod(ind-0.05, ne))+1);
 
-        V[age, ix, ie] = tempV[ind]
-        V_tomorrow[ix, ie] = tempV[ind]
-    end
+        #     V[age, indizes(ind, ne)[1], indizes(ind, ne)[2]] = tempV[ind]
+        #     V_tomorrow[indizes(ind, ne)[1], indizes(ind, ne)[2]] = tempV[ind]
+        # end
 
-    finish = convert(Int, Dates.value(Dates.unix2datetime(time())- start))/1000;
-    print("Age: ", age, ". Time: ", finish, " seconds. \n")
+        finish = convert(Int, Dates.value(Dates.unix2datetime(time())- start))/1000;
+        print("Age: ", age, ". Time: ", finish, " seconds. \n")
     end
 
     print("\n")
