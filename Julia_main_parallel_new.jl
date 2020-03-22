@@ -14,6 +14,22 @@ using SharedArrays
 # Number of cores/workers
 addprocs(6)
 
+@everywhere struct modelState
+    ind::Int64
+    ne::Int64
+    nx::Int64
+    T::Int64
+    age::Int64
+    P::Array{Float64,2}
+    xgrid::Vector{Float64}
+    egrid::Vector{Float64}
+    ssigma::Float64
+    bbeta::Float64
+    V::Array{Float64,2}
+    w::Float64
+    r::Float64
+end
+
 function faster()
 
     # Grid for x
@@ -94,27 +110,12 @@ function faster()
     #     Structure and function     #
     #--------------------------------#
 
-    # Data structure of state and exogenous variables
-    @everywhere struct modelState
-    ind::Int64
-    ne::Int64
-    nx::Int64
-    T::Int64
-    age::Int64
-    P::Array{Float64,2}
-    xgrid::Vector{Float64}
-    egrid::Vector{Float64}
-    ssigma::Float64
-    bbeta::Float64
-    V::Array{Float64,2}
-    w::Float64
-    r::Float64
-    end
+    # Data structure of state and exogenous variables    
 
     # Function that computes value function, given vector of state variables
-    @everywhere function value(currentState::modelState)
+    @everywhere function value(currentState::modelState, ind)
 
-    ind     = currentState.ind
+    # ind     = currentState.ind
     age     = currentState.age
     ne      = currentState.ne
     nx      = currentState.nx
@@ -122,7 +123,7 @@ function faster()
     P       = currentState.P
     xgrid   = currentState.xgrid
     egrid   = currentState.egrid
-    ssigma  = currentState.ssigma
+    ssigma  = currentState.ssigma   
     bbeta   = currentState.bbeta
     w       = currentState.w
     r       = currentState.r
@@ -174,16 +175,17 @@ function faster()
     print(" \n")
 
     start = Dates.unix2datetime(time())
+    
+    for age = T:-1:1        
+        currentState = modelState(1,ne,nx,T,age,P,xgrid,egrid,ssigma,bbeta, V_tomorrow,w,r)
 
-    for age = T:-1:1
+        @sync @distributed for ind = 1:(ne*nx)
 
-    @sync @distributed for ind = 1:(ne*nx)
-
-        ix      = convert(Int, ceil(ind/ne));
-        ie      = convert(Int, floor(mod(ind-0.05, ne))+1);
-
-        currentState = modelState(ind,ne,nx,T,age,P,xgrid,egrid,ssigma,bbeta, V_tomorrow,w,r)
-        tempV[ind] = value(currentState);
+            ix      = convert(Int, ceil(ind/ne));
+            ie      = convert(Int, floor(mod(ind-0.05, ne))+1);
+            # Bottleneck!!!
+            # currentState = modelState(ind,ne,nx,T,age,P,xgrid,egrid,ssigma,bbeta, V_tomorrow,w,r)
+            tempV[ind] = value(currentState, ind);
 
     end
 

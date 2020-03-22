@@ -38,8 +38,8 @@ pgi:
 	rm Cpp_main
 
 acc:
-	PGI=/opt/pgi;
-	PATH=/opt/pgi/linux86-64/17.10/bin:$PATH;
+	PGI=./PGI/pkg/pgi-compilers/opt/pgi/linux86-64-llvm/19.10/bin/
+	PATH=PGI:$PATH;
 	MANPATH=$MANPATH:/opt/pgi/linux86-64/17.10/man;
 	LM_LICENSE_FILE=$LM_LICENSE_FILE:/opt/pgi/license.dat; 
 	pgc++ Cpp_main_OpenACC.cpp -o Cpp_main_acc.exe -fast -acc -ta=nvidia 
