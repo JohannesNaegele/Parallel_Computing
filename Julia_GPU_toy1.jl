@@ -24,4 +24,7 @@ end
 
 main()
 
+CuArrays.allowscalar(false)
+CuArrays.allowscalar(true)
+
 a = daten(2., CuArray{Float64,3}(zeros(10, 10, 10)))

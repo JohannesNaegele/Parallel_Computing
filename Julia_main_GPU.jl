@@ -14,7 +14,7 @@ using CUDAnative, CuArrays, CUDAdrv, BenchmarkTools
 
 # Number of cores/workers
 addprocs(6)
-CuArrays.allowscalar(false)
+CuArrays.allowscalar(true)
 
 struct modelState
     ind::Int64
@@ -174,12 +174,16 @@ function faster()
 
     # hier beginnt der Spaß
     for age = T:-1:1
+        zähl = 0
         @sync for ind = 1:(ne*nx)
 
 
             currentState = modelState(ind,ne,nx,T,age,P,xgrid,egrid,ssigma,bbeta, V_tomorrow,w,r)
-            tempV[ind] = value(currentState);
-
+            zähl += 1
+            if zähl % 50 == 0
+                # println(zähl)
+            end
+            # tempV[ind] = value(currentState);
         end
 
         for ind = 1:(ne*nx)
@@ -215,6 +219,6 @@ function faster()
     end
 end
 
-CUDAdrv.@profile faster()
+# CUDAdrv.@profile faster()
 
 faster()
