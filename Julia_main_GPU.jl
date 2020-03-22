@@ -49,7 +49,7 @@ function faster()
     V_tomorrow = CuArray{Float64,2}(zeros(nx, ne))
 
     # Initialize value function as a shared array
-    tempV = CuArray{Float64,1}(ne*nx)
+    tempV = CuArray{Float64,1}(zeros(ne*nx))
 
     #--------------------------------#
     #         Grid creation          #
