@@ -113,10 +113,10 @@ function faster()
     # Data structure of state and exogenous variables    
 
     # Function that computes value function, given vector of state variables
-    @everywhere function value(currentState::modelState, ind)
+    @everywhere function value(currentState::modelState, ind, age)
 
     # ind     = currentState.ind
-    age     = currentState.age
+    # age     = currentState.age
     ne      = currentState.ne
     nx      = currentState.nx
     T       = currentState.T
@@ -181,18 +181,20 @@ function faster()
         ie = convert(Int, floor(mod(ind-0.05, ne))+1);
         return (ix, ie)
     end
+
+    test = modelState(1,ne,nx,T,1,P,xgrid,egrid,ssigma,bbeta, V_tomorrow,w,r)
     
     for age = T:-1:1        
-        currentState = modelState(1,ne,nx,T,age,P,xgrid,egrid,ssigma,bbeta, V_tomorrow,w,r)
+        # currentState = modelState(1,ne,nx,T,age,P,xgrid,egrid,ssigma,bbeta, V_tomorrow,w,r)
 
-        @sync @distributed for ind = 1:(ne*nx)
+        @sync @distributed @simd for ind = 1:(ne*nx)
 
             ix      = convert(Int, ceil(ind/ne));
             ie      = convert(Int, floor(mod(ind-0.05, ne))+1);
             # Bottleneck!!!
             # currentState = modelState(ind,ne,nx,T,age,P,xgrid,egrid,ssigma,bbeta, V_tomorrow,w,r)
             # tempV[ind] = value(currentState, ind);
-            V[age, indizes(ind, ne)[1], indizes(ind, ne)[2]] = value(currentState, ind)
+            V[age, indizes(ind, ne)[1], indizes(ind, ne)[2]] = value(test, ind, age)
             V_tomorrow[indizes(ind, ne)[1], indizes(ind, ne)[2]] = V[age, indizes(ind, ne)[1], indizes(ind, ne)[2]]
 
         end        

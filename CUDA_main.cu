@@ -194,8 +194,8 @@ int main()
   //                      Every layer is an age >= there are 80 layers
 
   const int block_size = 30;
-  dim3 dimBlock(block_size, ne);
-  dim3 dimGrid(nx/block_size, 1);
+  dim3 dimBlock(block_size, ne); // 30, 15
+  dim3 dimGrid(nx/block_size, 1); // 50, 1 | 30*50 = 1500 = nx
 
   // Initialize the grid for X
   double hxgrid[nx];
