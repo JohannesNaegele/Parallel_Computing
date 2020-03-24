@@ -3,9 +3,12 @@ using Distributions
 using Dates
 using CUDAnative, CuArrays, CUDAdrv, BenchmarkTools
 
-function kernel(V_neu, V_alt, alpha, j)
+function kernel(V, alpha, j)
     i = (blockIdx().x-1) * blockDim().x + threadIdx().x
-    V_neu[i] = V_alt[i]*alpha + j
+    V[i, j + 1] = V[i, j]*alpha + j
+    if i ==1
+        @cuprintln(i)
+    end
     return
 end
 
@@ -13,10 +16,14 @@ function main()
     alpha = 0.5
     n = 1024
     x = 10
-    V = CuArray{Float64,2}(zeros(n, x))
+    V = CuArray{Float64,2}(ones(n, x))
     for j in 1:(x-1)
-        @cuda threads=n kernel(V[:, j + 1], V[:,j], alpha, j)
+        @cuda threads=n kernel(V, alpha, j) 
+        # println("hier" * "$j")
     end
+    # j = 1
+    # @cuda threads=n kernel(V, alpha, j) 
+    println(V)
 end
 
 main()
@@ -33,6 +40,7 @@ function kernel_vadd(out, a, b)
 end
 
 @cuda threads=n kernel_vadd(zs, xs, ys)
+println(zs)
 
 
 
