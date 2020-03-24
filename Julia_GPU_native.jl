@@ -21,7 +21,7 @@ end
 # isbits(a)
 
 # Function that computes value function, given vector of state variables
-function value(params::params, age::Int64, xgrid::CuVector{Float64}, egrid::CuVector{Float64}, P::CuArray{Float64,2}, V::CuArray{Float64,3})
+function value(params::params, age::Int64, xgrid, egrid, P, V)
     
     ix = (blockIdx().x-1) * blockDim().x + threadIdx().x
     ie = threadIdx().y
@@ -48,7 +48,8 @@ function value(params::params, age::Int64, xgrid::CuVector{Float64}, egrid::CuVe
 
         cons  = (1 + r)*xgrid[ix] + egrid[ie]*w - xgrid[ixp];
 
-        utility = (cons^(1-ssigma))/(1-ssigma) + bbeta*expected;
+        # utility = (cons^(1-ssigma))/(1-ssigma) + bbeta*expected;
+        utility = (CUDAnative.pow.(cons,1-ssigma))/(1-ssigma) + bbeta*expected;
 
         if(cons <= 0)
             utility = -10.0^(5);
@@ -68,6 +69,8 @@ function value(params::params, age::Int64, xgrid::CuVector{Float64}, egrid::CuVe
 end
 
 function main()
+
+    println(CUDAdrv.name(CuDevice(0)))
 
     # Grid for x
     nx = 1500;
@@ -157,7 +160,7 @@ function main()
     ########################
     currentState = params(ne,nx,T,ssigma,bbeta,w,r)
     for age = T:-1:1
-        @cuda blocks=50 threads=(30, 15) value(currentState, age, xgrid, egrid, P, V)
+        @sync @cuda blocks=50 threads=(30, 15) value(currentState, age, xgrid, egrid, P, V)
         finish = convert(Int, Dates.value(Dates.unix2datetime(time())- start))/1000;
         print("Age: ", age, ". Time: ", finish, " seconds. \n")
     end
@@ -182,3 +185,5 @@ function main()
 end
 
 main()
+
+@btime(main())
