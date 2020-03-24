@@ -6,7 +6,9 @@ using CUDAnative, CuArrays, CUDAdrv, BenchmarkTools
 function kernel(V, alpha, j)
     i = (blockIdx().x-1) * blockDim().x + threadIdx().x
     V[i, j + 1] = V[i, j]*alpha + j
-    if i ==1
+    if i == 1
+        @cuprintln(blockIdx().x, blockIdx().y, blockIdx().z)
+        @cuprintln(threadIdx().x, threadIdx().y, threadIdx().z)
         @cuprintln(i)
     end
     return
@@ -42,7 +44,18 @@ end
 @cuda threads=n kernel_vadd(zs, xs, ys)
 println(zs)
 
+function dummy()
+    return
+end
 
+@cuda blocks=50 threads=(30, 15)  dummy()
+
+# const int block_size = 30;
+# dim3 dimBlock(block_size, ne); // 30, 15
+# dim3 dimGrid(nx/block_size, 1); // 50, 1 | 30*50 = 1500 = nx
+
+# const int ix  = blockIdx.x * blockDim.x + threadIdx.x;
+# const int ie  = threadIdx.y;
 
 # help?> blockIdx
 # search: blockIdx blockDim
