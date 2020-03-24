@@ -21,7 +21,7 @@ end
 # isbits(a)
 
 # Function that computes value function, given vector of state variables
-function value_all(params::params, age::Int64, xgrid::CuVector{Float64}, egrid::CuVector{Float64}, P::CuArray{Float64,2}, V::CuArray{Float64,3})
+function value(params::params, age::Int64, xgrid::CuVector{Float64}, egrid::CuVector{Float64}, P::CuArray{Float64,2}, V::CuArray{Float64,3})
     
     ix = (blockIdx().x-1) * blockDim().x + threadIdx().x
     ie = threadIdx().y
@@ -65,5 +65,120 @@ function value_all(params::params, age::Int64, xgrid::CuVector{Float64}, egrid::
     V[age, ix, ie] = VV
 
     return nothing
-
 end
+
+function main()
+
+    # Grid for x
+    nx = 1500;
+    xmin = 0.1;
+    xmax = 4.0;
+
+    # Grid for e: parameters for Tauchen
+    ne = 15;
+    ssigma_eps = 0.02058;
+    llambda_eps = 0.99;
+    m = 1.5;
+
+    # Utility function
+    ssigma = 2;
+    bbeta = 0.97;
+    T = 10;
+
+    # Prices
+    r = 0.07;
+    w = 5;
+
+    # Initialize the grid for X
+    xgrid = CuArray{Float64,1}(zeros(nx))
+
+    # Initialize the grid for E and the transition probability matrix
+    egrid = CuArray{Float64,1}(zeros(ne))
+    P = CuArray{Float64,2}(zeros(ne, ne))
+
+    # Initialize value function V
+    V = CuArray{Float64,3}(zeros(T, nx, ne))
+    V_tomorrow = CuArray{Float64,2}(zeros(nx, ne))
+
+    # Initialize value function as a shared array
+    tempV = CuArray{Float64,1}(zeros(ne*nx))
+
+    println("vor grid")
+
+    #--------------------------------#
+    #         Grid creation          #
+    #--------------------------------#
+
+    # Grid for capital (x)
+    size = nx;
+    xstep = (xmax - xmin) /(size - 1);
+    for i = 1:nx
+    xgrid[i] = xmin + (i-1)*xstep;
+    end
+
+    # Grid for productivity (e) with Tauchen (1986)
+    size = ne;
+    ssigma_y = sqrt((ssigma_eps^2) / (1 - (llambda_eps^2)));
+    estep = 2*ssigma_y*m / (size-1);
+    for i = 1:ne
+    egrid[i] = (-m*sqrt((ssigma_eps^2) / (1 - (llambda_eps^2))) + (i-1)*estep);
+    end
+
+    # Transition probability matrix (P) Tauchen (1986)
+    mm = egrid[2] - egrid[1];
+    for j = 1:ne
+    for k = 1:ne
+        if(k == 1)
+        P[j, k] = cdf(Normal(), (egrid[k] - llambda_eps*egrid[j] + (mm/2))/ssigma_eps);
+        elseif(k == ne)
+        P[j, k] = 1 - cdf(Normal(), (egrid[k] - llambda_eps*egrid[j] - (mm/2))/ssigma_eps);
+        else
+        P[j, k] = cdf(Normal(), (egrid[k] - llambda_eps*egrid[j] + (mm/2))/ssigma_eps) - cdf(Normal(), (egrid[k] - llambda_eps*egrid[j] - (mm/2))/ssigma_eps);
+        end
+    end
+    end
+
+    # Exponential of the grid e
+    for i = 1:ne
+    egrid[i] = exp(egrid[i]);
+    end
+
+    println("nach grid")
+
+    #--------------------------------#
+    #     Life-cycle computation     #
+    #--------------------------------#
+
+    print(" \n")
+    print("Life cycle computation: \n")
+    print(" \n")
+
+    start = Dates.unix2datetime(time())
+    ########################
+    currentState = params(ne,nx,T,ssigma,bbeta,w,r)
+    for age = T:-1:1
+        @cuda blocks=50 threads=(30, 15) value(currentState, age, xgrid, egrid, P, V)
+        finish = convert(Int, Dates.value(Dates.unix2datetime(time())- start))/1000;
+        print("Age: ", age, ". Time: ", finish, " seconds. \n")
+    end
+    print("\n")
+    finish = convert(Int, Dates.value(Dates.unix2datetime(time())- start))/1000;
+    print("TOTAL ELAPSED TIME: ", finish, " seconds. \n")
+
+    #---------------------#
+    #     Some checks     #
+    #---------------------#
+
+    print(" \n")
+    print(" - - - - - - - - - - - - - - - - - - - - - \n")
+    print(" \n")
+    print("The first entries of the value function: \n")
+    print(" \n")
+
+    # I print the first entries of the value function, to check
+    for i = 1:3
+        print(round(V[1, 1, i], digits=5), "\n")
+    end
+end
+
+main()
