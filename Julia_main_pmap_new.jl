@@ -100,7 +100,7 @@ function faster()
   # Utility function
   ssigma        = 2;
   bbeta         = 0.97;
-  T             = 2;
+  T             = 10;
 
   # Prices
   r             = 0.07;
@@ -211,4 +211,5 @@ function faster()
   end
 end
 
-@profile faster()
+faster()
+faster()

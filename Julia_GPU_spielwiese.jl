@@ -146,9 +146,6 @@ currentState = modelState(ind,ne,nx,T,age,P,xgrid,egrid,ssigma,bbeta, V_tomorrow
 
 isbits(currentState)
 
-function value_call(currentState::modelState)
-    value()
-
 function value(ind, )age
 
     ind     = currentState.ind
@@ -203,3 +200,15 @@ end
 
 @cuda value(currentState)
 
+
+a = [1 2 3; 4 5 6]
+
+function trick(a)
+    a[1] = 2
+end
+
+b = a[:,1]
+
+trick(b)
+
+println(a)

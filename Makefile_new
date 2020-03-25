@@ -69,10 +69,13 @@ omp_pgi:
 	rm Cpp_main_omp_pgi.exe
 
 julia_parallel:
-	julia -p6 Julia_main_parallel_new.jl
+	julia -p6 -O3 Julia_main_parallel_new.jl
 
 julia_pmap:
-	julia -p6 Julia_main_pmap_new.jl
+	julia -p6 -O3 Julia_main_pmap_new.jl
+
+julia_GPU_native:
+	julia -p6 -O3 --color=yes Julia_GPU_native.jl
 
 Rcpp:
 	export OMP_NUM_THREADS=$(CORES); Rscript Rcpp_main.R;

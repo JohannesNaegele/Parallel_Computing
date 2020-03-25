@@ -187,7 +187,7 @@ function faster()
     for age = T:-1:1        
         # currentState = modelState(1,ne,nx,T,age,P,xgrid,egrid,ssigma,bbeta, V_tomorrow,w,r)
 
-        @sync @distributed @simd for ind = 1:(ne*nx)
+        @sync @distributed for ind = 1:(ne*nx)
 
             ix      = convert(Int, ceil(ind/ne));
             ie      = convert(Int, floor(mod(ind-0.05, ne))+1);
@@ -232,4 +232,5 @@ function faster()
     end
 end
 
+faster()
 faster()

@@ -2,6 +2,8 @@ using Distributed
 using Distributions
 using Dates
 using CUDAnative, CuArrays, CUDAdrv, BenchmarkTools
+using Crayons
+
 
 struct params
     ne::Int64
@@ -11,14 +13,7 @@ struct params
     bbeta::Float64
     w::Float64
     r::Float64
-    # P::CuArray{Float64,2}
-    # xgrid::CuVector{Float64}
-    # egrid::CuVector{Float64}
-    # V::CuArray{Float64,2}
 end
-
-# a = params(1,1,1,1,1,1.,1.,1.,1.)
-# isbits(a)
 
 # Function that computes value function, given vector of state variables
 function value(params::params, age::Int64, xgrid, egrid, P, V)
@@ -38,7 +33,7 @@ function value(params::params, age::Int64, xgrid, egrid, P, V)
     ixpopt  = 0;
 
 
-    for ixp = 1:nx
+    @inbounds for ixp = 1:nx
         expected = 0.0;
         if(age < T)
             for iep = 1:ne
@@ -157,13 +152,14 @@ function main()
     print(" \n")
 
     start = Dates.unix2datetime(time())
-    ########################
-    currentState = params(ne,nx,T,ssigma,bbeta,w,r)
-    for age = T:-1:1
-        @sync @cuda blocks=50 threads=(30, 15) value(currentState, age, xgrid, egrid, P, V)
-        finish = convert(Int, Dates.value(Dates.unix2datetime(time())- start))/1000;
-        print("Age: ", age, ". Time: ", finish, " seconds. \n")
-    end
+        ########################
+        currentState = params(ne,nx,T,ssigma,bbeta,w,r)
+        @inbounds for age = T:-1:1
+            CuArrays.@sync @cuda blocks=50 threads=(30, 15) value(currentState, age, xgrid, egrid, P, V)
+            finish = convert(Int, Dates.value(Dates.unix2datetime(time())- start))/1000;
+            # print("Age: ", age, ". Time: ", finish, " seconds. \n")
+        end
+    V_neu = Array(V)
     print("\n")
     finish = convert(Int, Dates.value(Dates.unix2datetime(time())- start))/1000;
     print("TOTAL ELAPSED TIME: ", finish, " seconds. \n")
@@ -184,6 +180,11 @@ function main()
     end
 end
 
-main()
+println(Crayon(foreground = :red), "\nWarmup call -- slower!", Crayon(foreground = :white))
+@time main()
+println(Crayon(foreground = :green), "\nProper call -- correct time measurement.", Crayon(foreground = :white))
+@time main()
 
-@btime(main())
+# main()
+
+# @btime(CuArrays.@sync main())
