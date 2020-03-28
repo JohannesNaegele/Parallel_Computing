@@ -7,23 +7,8 @@ CORES := $(shell bash -c 'read -p "Enter the number of cores for parallelization
 
 
 # Execute the code for each language
-cpp:
-	g++ Cpp_main_OpenMP.cpp -fopenmp -o Cpp_main
-	export OMP_NUM_THREADS=$(CORES); ./Cpp_main;
-	rm Cpp_main
-
-cpp1:
-	g++ Cpp_main_OpenMP.cpp -fopenmp -o Cpp_main -O1 
-	export OMP_NUM_THREADS=$(CORES); ./Cpp_main;
-	rm Cpp_main
-
-cpp2:
-	g++ Cpp_main_OpenMP.cpp -fopenmp -o Cpp_main -O2 
-	export OMP_NUM_THREADS=$(CORES); ./Cpp_main;
-	rm Cpp_main
-
 cpp3:
-	g++ Cpp_main_OpenMP.cpp -fopenmp -o Cpp_main -O3 
+	g++ Cpp_main_OpenMP.cpp -fopenmp -o Cpp_main -Ofast
 	export OMP_NUM_THREADS=$(CORES); ./Cpp_main;
 	rm Cpp_main
 
