@@ -7,22 +7,22 @@ CORES := $(shell bash -c 'read -p "Enter the number of cores for parallelization
 
 
 # Execute the code for each language
-cpp3:
+cpp: # 15s
 	g++ Cpp_main_OpenMP.cpp -fopenmp -o Cpp_main -Ofast
 	export OMP_NUM_THREADS=$(CORES); ./Cpp_main;
 	rm Cpp_main
 
-pgi2:
-	pgc++ Cpp_main_OpenMP.cpp -o Cpp_main -mp -Minfo=accel -O
+pgi2: # 37s
+	pgc++ Cpp_main_OpenMP.cpp -o Cpp_main -mp -Minfo=accel -fast
 	export OMP_NUM_THREADS=$(CORES); ./Cpp_main;
 	rm Cpp_main
 
-pgi:
+pgi: # 0.54s
 	pgc++ Cpp_main_OpenACC.cpp -o Cpp_main -fast -ta=multicore -acc
 	export OMP_NUM_THREADS=$(CORES); ./Cpp_main;
 	rm Cpp_main
 
-acc:
+acc: # 1.59s
 	PGI=/opt/pgi;
 	PATH=/opt/pgi/linux86-64/17.10/bin:$PATH;
 	MANPATH=$MANPATH:/opt/pgi/linux86-64/17.10/man;
@@ -32,17 +32,18 @@ acc:
 	rm Cpp_main_acc.exe
 
 acc_profile:
+	# currentState.P-> prevents parallelization
 	pgc++ Cpp_main_OpenACC.cpp -o Cpp_main_acc.exe -fast -acc -ta=nvidia -Minfo=accel,ccff
 	./Cpp_main_acc.exe;
 	pgprof ./Cpp_main_acc.exe
 	rm Cpp_main_acc.exe
 
-omp:
-	g++ Cpp_main_OpenACC.cpp -o Cpp_main_omp.exe -fopenmp 
+omp: # 0.88s
+	g++ Cpp_main_OpenACC.cpp -o Cpp_main_omp.exe -fopenmp -Ofast
 	./Cpp_main_omp.exe;
 	rm Cpp_main_omp.exe
 	
-omp_pgi:
+omp_pgi: # 0.58s
 	pgc++ Cpp_main_OpenACC.cpp -o Cpp_main_omp_pgi.exe -fast -mp -ta=multicore
 	./Cpp_main_omp_pgi.exe;
 	rm Cpp_main_omp_pgi.exe
@@ -68,15 +69,15 @@ python:
 matlab:
 	matlab -nodesktop -nodisplay -r "Matlab_main $(CORES)"
 
-MPI:
-	mpic++ -g MPI_main.cpp -o main
+MPI: # 0.25s
+	mpic++ -g MPI_main.cpp -o main -Ofast
 	mpirun -np $(CORES) -hostfile MPI_host_file ./main
 	rm main
 
-CUDA:
+CUDA: # 0.53s
 	export PATH=/usr/local/cuda/bin/:$PATH
 	export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
-	nvcc CUDA_main.cu -o main
+	nvcc CUDA_main.cu -o main -O3
 	./main
 	rm main
 

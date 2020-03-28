@@ -1,6 +1,8 @@
 
 
 #include <iostream>
+// #include <accelmath.h>
+#include <math.h>
 #include <nlopt.hpp>
 #include <omp.h>
 using namespace std;
